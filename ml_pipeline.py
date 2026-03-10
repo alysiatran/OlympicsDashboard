@@ -114,7 +114,7 @@ def compute_metrics(model, X_test, y_test) -> dict:
     }
 
 
-CV = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
+CV = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
 
 
 # ──────────────────────────────────────────────────────────────────────
