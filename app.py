@@ -69,6 +69,9 @@ st.markdown(
 .medal-gold{color:#f59e0b;font-weight:700}
 .medal-silver{color:#94a3b8;font-weight:700}
 .medal-bronze{color:#b45309;font-weight:700}
+
+[data-testid="stTabs"] button[role="tab"]{color:#1e293b!important}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{color:#1565c0!important;font-weight:700}
 </style>
 """,
     unsafe_allow_html=True,
