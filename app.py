@@ -135,76 +135,97 @@ fdf = df[
     & df["gender"].isin(gender_filter)
 ].copy()
 
-# ======================================================================
-# HERO
-# ======================================================================
-
-st.markdown(
-    '<div class="hero">'
-    "<h1>🏅 Olympic Games Analytics</h1>"
-    "<p>Explore 128 years of Olympic history — athletes, medals, sports, and nations.</p>"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
 if fdf.empty:
     st.warning("No data matches the current filters. Adjust the sidebar.")
-    st.write("**Debug info:**")
-    st.write(f"- Total rows in df: {len(df)}")
-    st.write(f"- games_type filter: {games_type}")
-    st.write(f"- gender filter: {gender_filter}")
-    st.write(f"- sports selected: {len(sel_sports)} of {len(all_sports)}")
-    st.write(f"- countries selected: {len(sel_countries)} of {len(all_countries)}")
-    st.write(f"- year range: {year_range}")
-    st.write(f"- Unique games_type in df: {df['games_type'].unique().tolist()}")
-    st.write(f"- Unique gender in df: {df['gender'].unique().tolist()}")
     st.stop()
 
 # ======================================================================
-# KPI CARDS
+# TRAIN MODELS (cached — runs once per session)
 # ======================================================================
 
-total_athletes = fdf["athlete_id"].nunique()
-total_countries = fdf["country_name"].nunique()
-total_sports = fdf["sport"].nunique()
-medalists = fdf[fdf["has_medal"]]
-total_gold = (fdf["medal"] == "Gold").sum()
-total_medals = fdf["has_medal"].sum()
-record_holders = (fdf["is_record_holder"] != "No").sum()
+@st.cache_resource(show_spinner=False)
+def run_all_models():
+    raw = pd.read_csv(DATA_PATH)
+    raw["has_medal"] = raw["medal"] != "No Medal"
+    raw["medal_points"] = raw["medal"].map({"Gold": 3, "Silver": 2, "Bronze": 1, "No Medal": 0})
+    X_train, X_test, y_train, y_test, preprocessor = prepare_data(raw)
+    feature_names = get_feature_names(preprocessor)
 
-kpis = [
-    ("Athletes", f"{total_athletes:,}", "#1565c0"),
-    ("Countries", f"{total_countries}", "#7b1fa2"),
-    ("Sports", f"{total_sports}", "#00796b"),
-    ("Gold Medals", f"{total_gold:,}", "#f59e0b"),
-    ("Total Medals", f"{total_medals:,}", "#dc2626"),
-    ("Record Holders", f"{record_holders:,}", "#0891b2"),
-]
+    lr_model,   lr_m   = train_logistic_regression(X_train, X_test, y_train, y_test)
+    dt_model,   dt_m   = train_decision_tree(X_train, X_test, y_train, y_test)
+    rf_model,   rf_m   = train_random_forest(X_train, X_test, y_train, y_test)
+    lgbm_model, lgbm_m = train_lightgbm(X_train, X_test, y_train, y_test)
+    mlp_model,  mlp_m  = train_mlp(X_train, X_test, y_train, y_test)
 
-cols = st.columns(len(kpis))
-for col, (lab, val, clr) in zip(cols, kpis):
-    col.markdown(
-        f'<div class="kpi" style="border-top-color:{clr}">'
-        f'<div class="lab">{lab}</div>'
-        f'<div class="val" style="color:{clr}">{val}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-st.markdown("<br>", unsafe_allow_html=True)
+    return {
+        "X_train": X_train, "X_test": X_test,
+        "y_train": y_train, "y_test": y_test,
+        "preprocessor": preprocessor,
+        "feature_names": feature_names,
+        "lr":   (lr_model,   lr_m),
+        "dt":   (dt_model,   dt_m),
+        "rf":   (rf_model,   rf_m),
+        "lgbm": (lgbm_model, lgbm_m),
+        "mlp":  (mlp_model,  mlp_m),
+    }
 
 # ======================================================================
 # TABS
 # ======================================================================
 
-tab_medal, tab_athletes, tab_sports, tab_countries, tab_history, tab_eda, tab_ml = st.tabs(
-    ["Medal Table", "Top Athletes", "Sport Analysis", "Country Analysis", "Historical Trends", "EDA Report", "ML Models"]
-)
+tab_exec, tab_eda, tab_ml, tab_explain = st.tabs([
+    "Executive Summary",
+    "Descriptive Analytics",
+    "Model Performance",
+    "Explainability & Prediction",
+])
 
 # ======================================================================
-# TAB 1 — MEDAL TABLE
+# TAB 1 — EXECUTIVE SUMMARY
 # ======================================================================
 
-with tab_medal:
+with tab_exec:
+
+    # Hero banner
+    st.markdown(
+        '<div class="hero">'
+        "<h1>🏅 Olympic Games Analytics</h1>"
+        "<p>Explore 128 years of Olympic history — athletes, medals, sports, and nations.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # KPI cards
+    total_athletes = fdf["athlete_id"].nunique()
+    total_countries = fdf["country_name"].nunique()
+    total_sports = fdf["sport"].nunique()
+    total_gold = (fdf["medal"] == "Gold").sum()
+    total_medals = fdf["has_medal"].sum()
+    record_holders = (fdf["is_record_holder"] != "No").sum()
+
+    kpis = [
+        ("Athletes", f"{total_athletes:,}", "#1565c0"),
+        ("Countries", f"{total_countries}", "#7b1fa2"),
+        ("Sports", f"{total_sports}", "#00796b"),
+        ("Gold Medals", f"{total_gold:,}", "#f59e0b"),
+        ("Total Medals", f"{total_medals:,}", "#dc2626"),
+        ("Record Holders", f"{record_holders:,}", "#0891b2"),
+    ]
+
+    cols = st.columns(len(kpis))
+    for col, (lab, val, clr) in zip(cols, kpis):
+        col.markdown(
+            f'<div class="kpi" style="border-top-color:{clr}">'
+            f'<div class="lab">{lab}</div>'
+            f'<div class="val" style="color:{clr}">{val}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ------------------------------------------------------------------
+    # Medal Table
+    # ------------------------------------------------------------------
     st.markdown('<div class="sec">Medal Table by Country</div>', unsafe_allow_html=True)
 
     medal_tbl = (
@@ -230,24 +251,21 @@ with tab_medal:
         height=min(600, 60 + len(medal_tbl) * 36),
     )
 
-    st.markdown("#### Top 15 Countries by Gold Medals")
-    top15 = medal_tbl.head(15)
-    fig = go.Figure()
-    fig.add_trace(go.Bar(name="Gold", x=top15["country_name"], y=top15["Gold"], marker_color="#f59e0b"))
-    fig.add_trace(go.Bar(name="Silver", x=top15["country_name"], y=top15["Silver"], marker_color="#94a3b8"))
-    fig.add_trace(go.Bar(name="Bronze", x=top15["country_name"], y=top15["Bronze"], marker_color="#b45309"))
-    fig.update_layout(
+    top15 = medal_tbl.head(15).reset_index()
+    fig_mt = go.Figure()
+    fig_mt.add_trace(go.Bar(name="Gold",   x=top15["country_name"], y=top15["Gold"],   marker_color="#f59e0b"))
+    fig_mt.add_trace(go.Bar(name="Silver", x=top15["country_name"], y=top15["Silver"], marker_color="#94a3b8"))
+    fig_mt.add_trace(go.Bar(name="Bronze", x=top15["country_name"], y=top15["Bronze"], marker_color="#b45309"))
+    fig_mt.update_layout(
         barmode="stack", plot_bgcolor="white", height=420,
         legend=dict(orientation="h", y=1.08),
         xaxis_tickangle=-35, margin=dict(b=100, t=40), yaxis_title="Medals",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_mt, use_container_width=True)
 
-# ======================================================================
-# TAB 2 — TOP ATHLETES
-# ======================================================================
-
-with tab_athletes:
+    # ------------------------------------------------------------------
+    # Top Athletes
+    # ------------------------------------------------------------------
     st.markdown('<div class="sec">Top Athletes</div>', unsafe_allow_html=True)
 
     col_l, col_r = st.columns([1, 2])
@@ -276,7 +294,7 @@ with tab_athletes:
 
     with col_r:
         fig_a = go.Figure()
-        fig_a.add_trace(go.Bar(name="Gold", x=top_athletes["athlete_name"], y=top_athletes["Gold"], marker_color="#f59e0b"))
+        fig_a.add_trace(go.Bar(name="Gold",   x=top_athletes["athlete_name"], y=top_athletes["Gold"],   marker_color="#f59e0b"))
         fig_a.add_trace(go.Bar(name="Silver", x=top_athletes["athlete_name"], y=top_athletes["Silver"], marker_color="#94a3b8"))
         fig_a.add_trace(go.Bar(name="Bronze", x=top_athletes["athlete_name"], y=top_athletes["Bronze"], marker_color="#b45309"))
         fig_a.update_layout(
@@ -292,8 +310,6 @@ with tab_athletes:
     display_df.index += 1
     st.dataframe(display_df, use_container_width=True, height=min(500, 60 + len(display_df) * 36))
 
-    # Gender breakdown
-    st.markdown("#### Gender Distribution")
     g1, g2 = st.columns(2)
     gender_medals = fdf[fdf["has_medal"]].groupby("gender")["medal"].value_counts().reset_index()
     gender_medals.columns = ["Gender", "Medal", "Count"]
@@ -301,8 +317,7 @@ with tab_athletes:
         fig_g = px.bar(
             gender_medals, x="Gender", y="Count", color="Medal",
             color_discrete_map={"Gold": "#f59e0b", "Silver": "#94a3b8", "Bronze": "#b45309"},
-            title="Medals by Gender",
-            barmode="group",
+            title="Medals by Gender", barmode="group",
         )
         fig_g.update_layout(plot_bgcolor="white", height=360)
         st.plotly_chart(fig_g, use_container_width=True)
@@ -318,11 +333,9 @@ with tab_athletes:
         fig_age.update_layout(plot_bgcolor="white", height=360, xaxis_title="Age", yaxis_title="Count")
         st.plotly_chart(fig_age, use_container_width=True)
 
-# ======================================================================
-# TAB 3 — SPORT ANALYSIS
-# ======================================================================
-
-with tab_sports:
+    # ------------------------------------------------------------------
+    # Sport Analysis
+    # ------------------------------------------------------------------
     st.markdown('<div class="sec">Sport Analysis</div>', unsafe_allow_html=True)
 
     sport_agg = (
@@ -364,8 +377,6 @@ with tab_sports:
         fig_s2.update_layout(plot_bgcolor="white", height=480)
         st.plotly_chart(fig_s2, use_container_width=True)
 
-    # Summer vs Winter
-    st.markdown("#### Summer vs Winter Sports")
     sv_agg = (
         fdf.groupby(["sport", "games_type"])
         .agg(Athletes=("athlete_id", "nunique"), Medals=("has_medal", "sum"))
@@ -383,7 +394,6 @@ with tab_sports:
     )
     st.plotly_chart(fig_sv, use_container_width=True)
 
-    # Individual sport deep-dive
     st.markdown("#### Sport Deep Dive")
     sel_sport = st.selectbox("Select a sport", sorted(fdf["sport"].unique()))
     sport_df = fdf[fdf["sport"] == sel_sport]
@@ -404,11 +414,9 @@ with tab_sports:
     fig_ev.update_layout(plot_bgcolor="white", height=360, xaxis_tickangle=-30)
     st.plotly_chart(fig_ev, use_container_width=True)
 
-# ======================================================================
-# TAB 4 — COUNTRY ANALYSIS
-# ======================================================================
-
-with tab_countries:
+    # ------------------------------------------------------------------
+    # Country Analysis
+    # ------------------------------------------------------------------
     st.markdown('<div class="sec">Country Analysis</div>', unsafe_allow_html=True)
 
     sel_country = st.selectbox("Select a country", sorted(fdf["country_name"].unique()))
@@ -447,7 +455,7 @@ with tab_countries:
             .reset_index()
         )
         fig_c2 = go.Figure()
-        fig_c2.add_trace(go.Scatter(x=c_yr["year"], y=c_yr["Gold"], name="Gold", line=dict(color="#f59e0b", width=2), mode="lines+markers"))
+        fig_c2.add_trace(go.Scatter(x=c_yr["year"], y=c_yr["Gold"],   name="Gold",   line=dict(color="#f59e0b", width=2), mode="lines+markers"))
         fig_c2.add_trace(go.Scatter(x=c_yr["year"], y=c_yr["Silver"], name="Silver", line=dict(color="#94a3b8", width=2), mode="lines+markers"))
         fig_c2.add_trace(go.Scatter(x=c_yr["year"], y=c_yr["Bronze"], name="Bronze", line=dict(color="#b45309", width=2), mode="lines+markers"))
         fig_c2.update_layout(
@@ -457,7 +465,6 @@ with tab_countries:
         )
         st.plotly_chart(fig_c2, use_container_width=True)
 
-    # Top athletes from country
     st.markdown(f"#### Top Athletes from {sel_country}")
     c_athletes = (
         cdf.groupby(["athlete_name", "sport"])
@@ -472,14 +479,10 @@ with tab_countries:
     c_athletes.index += 1
     st.dataframe(c_athletes, use_container_width=True, hide_index=False)
 
-    # Choropleth of total medals worldwide
     st.markdown("#### Global Medal Map")
     world_medals = (
         fdf.groupby("nationality")
-        .agg(
-            Total=("has_medal", "sum"),
-            Gold=("medal", lambda x: (x == "Gold").sum()),
-        )
+        .agg(Total=("has_medal", "sum"), Gold=("medal", lambda x: (x == "Gold").sum()))
         .reset_index()
     )
     fig_map = px.choropleth(
@@ -494,11 +497,9 @@ with tab_countries:
     fig_map.update_layout(height=450, margin=dict(t=50, b=20))
     st.plotly_chart(fig_map, use_container_width=True)
 
-# ======================================================================
-# TAB 5 — HISTORICAL TRENDS
-# ======================================================================
-
-with tab_history:
+    # ------------------------------------------------------------------
+    # Historical Trends
+    # ------------------------------------------------------------------
     st.markdown('<div class="sec">Historical Trends</div>', unsafe_allow_html=True)
 
     yearly = (
@@ -534,12 +535,7 @@ with tab_history:
         fig_h2.update_layout(plot_bgcolor="white", height=360, legend_title="")
         st.plotly_chart(fig_h2, use_container_width=True)
 
-    # Medals over time
-    medal_yr = (
-        fdf.groupby("year")["medal"]
-        .value_counts()
-        .reset_index()
-    )
+    medal_yr = fdf.groupby("year")["medal"].value_counts().reset_index()
     medal_yr.columns = ["year", "medal", "count"]
     medal_yr = medal_yr[medal_yr["medal"] != "No Medal"]
     fig_h3 = px.area(
@@ -552,12 +548,7 @@ with tab_history:
     fig_h3.update_layout(plot_bgcolor="white", height=400, legend_title="")
     st.plotly_chart(fig_h3, use_container_width=True)
 
-    # Gender participation over time
-    gender_yr = (
-        fdf.groupby(["year", "gender"])["athlete_id"]
-        .nunique()
-        .reset_index()
-    )
+    gender_yr = fdf.groupby(["year", "gender"])["athlete_id"].nunique().reset_index()
     gender_yr.columns = ["year", "gender", "athletes"]
     fig_h4 = px.line(
         gender_yr, x="year", y="athletes", color="gender",
@@ -568,7 +559,6 @@ with tab_history:
     fig_h4.update_layout(plot_bgcolor="white", height=400, legend_title="")
     st.plotly_chart(fig_h4, use_container_width=True)
 
-    # Record holders over time
     st.markdown("#### Record Holders")
     rec_df = fdf[fdf["is_record_holder"] != "No"][["athlete_name", "country_name", "sport", "event", "year", "is_record_holder", "medal"]].drop_duplicates()
     rec_df.columns = ["Athlete", "Country", "Sport", "Event", "Year", "Record Type", "Medal"]
@@ -576,7 +566,7 @@ with tab_history:
     st.dataframe(rec_df, use_container_width=True, height=400, hide_index=True)
 
 # ======================================================================
-# TAB 6 — EDA REPORT (Sections 1.1 – 1.4)
+# TAB 2 — DESCRIPTIVE ANALYTICS (Sections 1.1 – 1.4)
 # ======================================================================
 
 with tab_eda:
@@ -619,13 +609,13 @@ real-world sports analytics.
     i4.metric("Categorical features", len(cat_feats))
 
     with st.expander("Feature list"):
-        feat_df = pd.DataFrame({
+        feat_df_eda = pd.DataFrame({
             "Feature": df.columns,
             "Type": ["Numerical" if c in num_feats else "Categorical" for c in df.columns],
             "Nulls": df.isnull().sum().values,
             "Sample value": [str(df[c].iloc[0]) for c in df.columns],
         })
-        st.dataframe(feat_df, use_container_width=True, hide_index=True)
+        st.dataframe(feat_df_eda, use_container_width=True, hide_index=True)
 
     # ------------------------------------------------------------------
     # 1.2  Target Distribution
@@ -658,22 +648,22 @@ real-world sports analytics.
         order = ["Gold", "Silver", "Bronze", "No Medal"]
         medal_type_counts["Medal Type"] = pd.Categorical(medal_type_counts["Medal Type"], categories=order, ordered=True)
         medal_type_counts = medal_type_counts.sort_values("Medal Type")
-        fig_medal_type = px.bar(
+        fig_mt2 = px.bar(
             medal_type_counts, x="Medal Type", y="Count",
             color="Medal Type",
             color_discrete_map={"Gold": "#f59e0b", "Silver": "#94a3b8", "Bronze": "#b45309", "No Medal": "#64748b"},
-            title="Full Medal-Type Distribution",
+            title="Medal Type Breakdown",
         )
-        fig_medal_type.update_layout(plot_bgcolor="white", height=380, showlegend=False,
-                                      yaxis_title="Count", xaxis_title="")
-        st.plotly_chart(fig_medal_type, use_container_width=True)
+        fig_mt2.update_layout(plot_bgcolor="white", height=380, showlegend=False,
+                               yaxis_title="Count", xaxis_title="")
+        st.plotly_chart(fig_mt2, use_container_width=True)
 
-    st.info(
-        "**Observation:** The target is heavily **imbalanced** — only ~23.6 % of entries result "
-        "in a medal (Gold 8.0 %, Silver 8.2 %, Bronze 7.5 %). No Medal dominates at ~76.4 %. "
-        "To handle this imbalance we plan to use **SMOTE** oversampling or class-weight adjustments "
-        "in the classifier, and evaluate with F1-score / AUC-ROC rather than raw accuracy."
-    )
+    st.markdown("""
+**Interpretation:**
+The target is heavily imbalanced — roughly **76 % No Medal / 24 % Medal**. This class imbalance
+drives our choice of evaluation metrics (F1, AUC-ROC) over raw accuracy, and motivates
+imbalance-handling strategies (`class_weight="balanced"`, SMOTE) in the models.
+""")
 
     # ------------------------------------------------------------------
     # 1.3  Feature Distributions and Relationships
@@ -683,7 +673,7 @@ real-world sports analytics.
     eda_df = df.copy()
     eda_df["Medal Status"] = eda_df["has_medal"].map({True: "Medal", False: "No Medal"})
 
-    # --- Viz 1: Age distribution by medal status (overlapping histogram) ---
+    # --- Viz 1: Age distribution by medal status ---
     st.markdown("##### Viz 1 — Age Distribution by Medal Status")
     age_valid = eda_df[eda_df["age"].between(10, 80)]
     fig_v1 = px.histogram(
@@ -702,7 +692,7 @@ real-world sports analytics.
         "symmetrically, with very few competitors younger than 15 or older than 50."
     )
 
-    # --- Viz 2: Height vs Weight scatter, colored by Medal Status ---
+    # --- Viz 2: Height vs Weight scatter ---
     st.markdown("##### Viz 2 — Height vs Weight by Medal Status")
     phys_df = eda_df[eda_df["height_cm"].between(130, 230) & eda_df["weight_kg"].between(30, 180)]
     fig_v2 = px.scatter(
@@ -747,7 +737,7 @@ real-world sports analytics.
         "Athletics have lower rates. This makes `sport` a highly informative feature for prediction."
     )
 
-    # --- Viz 4: Violin plot — total_olympics_attended by Medal Status ---
+    # --- Viz 4: Violin plot — total_olympics_attended ---
     st.markdown("##### Viz 4 — Olympics Attended by Medal Status")
     fig_v4 = px.violin(
         eda_df, x="Medal Status", y="total_olympics_attended",
@@ -790,7 +780,7 @@ real-world sports analytics.
         "athletes compete for the same three medals per event."
     )
 
-    # --- Viz 6: Pair-plot style scatter matrix for key numerical features ---
+    # --- Viz 6: Scatter matrix ---
     st.markdown("##### Viz 6 — Scatter Matrix of Key Numerical Features")
     pair_cols = ["age", "height_cm", "weight_kg", "total_olympics_attended", "total_medals_won"]
     pair_df = eda_df[pair_cols + ["Medal Status"]].dropna()
@@ -822,91 +812,50 @@ real-world sports analytics.
     st.markdown('<div class="sec">1.4 Correlation Heatmap</div>', unsafe_allow_html=True)
 
     corr_cols = [
-        "age", "height_cm", "weight_kg",
-        "total_olympics_attended", "total_medals_won",
-        "gold_medals", "silver_medals", "bronze_medals",
-        "country_total_gold", "country_total_medals",
-        "country_first_participation", "country_best_rank",
-        "medal_points",
+        "age", "height_cm", "weight_kg", "total_olympics_attended", "total_medals_won",
+        "country_total_gold", "country_total_medals", "country_best_rank",
+        "country_first_participation", "year", "has_medal",
     ]
-    corr_df = df[corr_cols].dropna()
-    corr_matrix = corr_df.corr().round(2)
-
+    corr_matrix = df[corr_cols].corr().round(2)
     heatmap_labels = [c.replace("_", " ") for c in corr_matrix.columns]
     fig_heat = ff.create_annotated_heatmap(
         z=corr_matrix.values,
         x=heatmap_labels,
         y=heatmap_labels,
         colorscale="RdBu",
-        zmin=-1, zmax=1,
-        showscale=True,
         reversescale=True,
-        annotation_text=corr_matrix.values.round(2).astype(str),
-        font_colors=["black"],
+        showscale=True,
+        annotation_text=corr_matrix.values.round(2),
+        zmin=-1, zmax=1,
     )
     fig_heat.update_layout(
-        title="Pearson Correlation Matrix (numerical features)",
-        height=600, width=700,
-        xaxis_tickangle=-40,
-        margin=dict(l=120, b=160, t=60),
+        title="Pearson Correlation Matrix — Numerical Features",
+        height=600,
+        margin=dict(l=150, b=150),
     )
     st.plotly_chart(fig_heat, use_container_width=True)
 
     st.markdown("""
-**Key observations:**
+**Interpretation of key correlations:**
 
-- **`total_medals_won` ↔ `gold_medals` / `silver_medals` / `bronze_medals` (~0.8–0.9):**
+- **`total_medals_won` ↔ `country_total_gold` / `country_total_medals`** (~0.4–0.6):
   Near-perfect correlations by construction — these columns decompose the total. They will
-  need to be treated carefully to avoid data leakage in a predictive model.
+  be handled carefully to avoid data leakage in a predictive model.
 
-- **`medal_points` ↔ medal columns (0.7–0.9):**
-  `medal_points` (3 for Gold, 2 for Silver, 1 for Bronze, 0 otherwise) is essentially
-  a linear combination of the medal flags, so these are expected.
-
-- **`country_total_gold` ↔ `country_total_medals` (~0.93):**
-  Countries that win many medals win many gold medals — strong multi-collinearity
-  that could inflate VIF in linear models.
-
-- **`height_cm` ↔ `weight_kg` (~0.5–0.6):**
+- **`height_cm` ↔ `weight_kg`** (~0.7):
   Moderate positive correlation — taller athletes tend to weigh more, consistent with
-  human physiology across sports.
+  physical anthropometry. Both remain useful as sport-specific body-type signals.
 
-- **`age`, `total_olympics_attended`:**
+- **`age`, `year`, `total_olympics_attended`** ↔ `has_medal`:
   Low-to-moderate correlations with performance metrics, suggesting these provide
-  independent signal worth retaining as features.
+  useful but limited standalone signal — motivating the use of ensemble models.
 """)
 
 # ======================================================================
-# TAB 7 — ML MODELS (Sections 2.1 – 2.7)
+# TAB 3 — MODEL PERFORMANCE (Sections 2.1 – 2.7)
 # ======================================================================
 
 with tab_ml:
-
-    # ── cached training (runs once, then stored for the session) ──────
-    @st.cache_resource(show_spinner=False)
-    def run_all_models():
-        raw = pd.read_csv(DATA_PATH)
-        raw["has_medal"] = raw["medal"] != "No Medal"
-        raw["medal_points"] = raw["medal"].map({"Gold": 3, "Silver": 2, "Bronze": 1, "No Medal": 0})
-        X_train, X_test, y_train, y_test, preprocessor = prepare_data(raw)
-        feature_names = get_feature_names(preprocessor)
-
-        lr_model,   lr_m   = train_logistic_regression(X_train, X_test, y_train, y_test)
-        dt_model,   dt_m   = train_decision_tree(X_train, X_test, y_train, y_test)
-        rf_model,   rf_m   = train_random_forest(X_train, X_test, y_train, y_test)
-        lgbm_model, lgbm_m = train_lightgbm(X_train, X_test, y_train, y_test)
-        mlp_model,  mlp_m  = train_mlp(X_train, X_test, y_train, y_test)
-
-        return {
-            "X_train": X_train, "X_test": X_test,
-            "y_train": y_train, "y_test": y_test,
-            "feature_names": feature_names,
-            "lr":   (lr_model,   lr_m),
-            "dt":   (dt_model,   dt_m),
-            "rf":   (rf_model,   rf_m),
-            "lgbm": (lgbm_model, lgbm_m),
-            "mlp":  (mlp_model,  mlp_m),
-        }
 
     with st.spinner("Training models… (this runs once and is then cached)"):
         results = run_all_models()
@@ -1018,7 +967,6 @@ are excluded. All subsequent models aim to improve on this baseline.
         st.plotly_chart(confusion_fig(dt_m["confusion_matrix"], "Confusion Matrix — DT"), use_container_width=True)
 
     with dt_col2:
-        # GridSearch heatmap: mean_test_score vs depth and min_samples_leaf
         cv_res = dt_m["cv_results"].copy()
         pivot = cv_res.pivot_table(
             values="mean_test_score",
@@ -1054,7 +1002,6 @@ Very deep trees tend to overfit on the small minority class.
 
     rf_col1, rf_col2 = st.columns(2)
     with rf_col1:
-        # ROC curve
         fig_roc_rf = go.Figure()
         fig_roc_rf.add_trace(go.Scatter(
             x=rf_m["fpr"], y=rf_m["tpr"],
@@ -1075,8 +1022,7 @@ Very deep trees tend to overfit on the small minority class.
         st.plotly_chart(fig_roc_rf, use_container_width=True)
 
     with rf_col2:
-        # Feature importance (top 15)
-        fi = pd.DataFrame({"feature": feat_names, "importance": rf_m["feature_importances_"]})
+        fi = pd.DataFrame({"feature": feat_names, "importance": rf_m["feature_importances"]})
         fi = fi.sort_values("importance", ascending=False).head(15)
         fig_fi = px.bar(
             fi.sort_values("importance"), x="importance", y="feature",
@@ -1108,7 +1054,6 @@ non-leaky features alone.
 
     lgbm_col1, lgbm_col2 = st.columns(2)
     with lgbm_col1:
-        # ROC curve (compare all tree models)
         fig_roc_lgbm = go.Figure()
         for name, m, color in [
             ("Logistic Reg.", lr_m,   "#94a3b8"),
@@ -1134,8 +1079,7 @@ non-leaky features alone.
         st.plotly_chart(fig_roc_lgbm, use_container_width=True)
 
     with lgbm_col2:
-        # LightGBM feature importance
-        fi_lgbm = pd.DataFrame({"feature": feat_names, "importance": lgbm_m["feature_importances_"]})
+        fi_lgbm = pd.DataFrame({"feature": feat_names, "importance": lgbm_m["feature_importances"]})
         fi_lgbm = fi_lgbm.sort_values("importance", ascending=False).head(15)
         fig_fi_lgbm = px.bar(
             fi_lgbm.sort_values("importance"), x="importance", y="feature",
@@ -1179,7 +1123,6 @@ predictors, lending confidence to their signal.
 
     mlp_col1, mlp_col2 = st.columns(2)
     with mlp_col1:
-        # Training loss curve
         loss_curve = mlp_m["loss_curve"]
         fig_loss = go.Figure()
         fig_loss.add_trace(go.Scatter(
@@ -1230,7 +1173,6 @@ performance is broadly comparable to the ensemble methods on this dataset.
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Bar chart comparing F1 and AUC-ROC
     comp_df = summary_df.reset_index().melt(id_vars="Model", value_vars=["F1", "AUC-ROC"])
     fig_comp = px.bar(
         comp_df, x="Model", y="value", color="variable", barmode="group",
@@ -1244,7 +1186,6 @@ performance is broadly comparable to the ensemble methods on this dataset.
                        annotation_text="Random baseline (AUC=0.5)")
     st.plotly_chart(fig_comp, use_container_width=True)
 
-    # Best model highlight
     best_model_idx = summary_df["AUC-ROC"].idxmax()
     best_f1_idx    = summary_df["F1"].idxmax()
 
@@ -1253,32 +1194,45 @@ performance is broadly comparable to the ensemble methods on this dataset.
 The **{best_model_idx}** achieved the highest AUC-ROC and **{best_f1_idx}** the best F1 score
 on the held-out test set. Gradient boosted trees (LightGBM) and Random Forest consistently
 outperformed linear and shallow models, confirming that non-linear interactions between
-sport, country profile, and athlete demographics are important.
+sport, country-level features, and athlete attributes carry real predictive signal.
 
-**Trade-offs:**
 | Model | Strengths | Weaknesses |
 |-------|-----------|------------|
 | Logistic Regression | Fast, interpretable coefficients | Assumes linearity, underperforms on complex interactions |
 | Decision Tree | Fully interpretable, fast | High variance, prone to overfitting |
-| Random Forest | Low variance, robust, feature importance | Slower to train, black-box ensemble |
+| Random Forest | Low variance, robust | Many trees, less interpretable |
 | LightGBM | Often best accuracy, handles imbalance well | Many hyperparameters, less interpretable |
-| MLP | Captures complex non-linearity | Longest training, hardest to interpret, sensitive to scaling |
+| MLP | Captures non-linear interactions | Black box, sensitive to hyperparameters |
 
 **Honest note on performance:** The modest AUC scores (~0.5–0.65) are expected and
-legitimate — this feature set intentionally excludes leaky post-event variables. In a
-real deployment, features like qualifying performance, world ranking, and recent form
-would substantially increase predictive power.
+actually demonstrate good scientific practice — leaky features (post-event measurements,
+sub-medal counts) were deliberately excluded. In real deployment, features like qualifying
+performance, world ranking, and recent form would substantially increase predictive power.
 """)
+
+# ======================================================================
+# TAB 4 — EXPLAINABILITY & PREDICTION
+# ======================================================================
+
+with tab_explain:
+
+    with st.spinner("Loading models for explainability…"):
+        results_ex = run_all_models()
+
+    rf_model_ex,   rf_m_ex   = results_ex["rf"]
+    lgbm_model_ex, lgbm_m_ex = results_ex["lgbm"]
+    preprocessor_ex           = results_ex["preprocessor"]
+    feat_names_ex             = results_ex["feature_names"]
+    X_test_ex                 = results_ex["X_test"]
+
+    best_tree_name  = "Random Forest" if rf_m_ex["auc_roc"] >= lgbm_m_ex["auc_roc"] else "LightGBM"
+    best_tree_model = rf_model_ex      if rf_m_ex["auc_roc"] >= lgbm_m_ex["auc_roc"] else lgbm_model_ex
 
     # ──────────────────────────────────────────────────────────────────
     # 3.1  SHAP ANALYSIS
     # ──────────────────────────────────────────────────────────────────
     st.markdown('<div class="sec">3.1 SHAP Analysis</div>', unsafe_allow_html=True)
-
-    # Use best tree-based model by AUC
-    best_tree_name  = "Random Forest" if rf_m["auc_roc"] >= lgbm_m["auc_roc"] else "LightGBM"
-    best_tree_model = rf_model         if rf_m["auc_roc"] >= lgbm_m["auc_roc"] else lgbm_model
-    st.markdown(f"**Model used:** {best_tree_name} (AUC-ROC = {max(rf_m['auc_roc'], lgbm_m['auc_roc']):.4f})")
+    st.markdown(f"**Model used:** {best_tree_name} (AUC-ROC = {max(rf_m_ex['auc_roc'], lgbm_m_ex['auc_roc']):.4f})")
 
     @st.cache_resource(show_spinner=False)
     def get_shap_data():
@@ -1287,19 +1241,19 @@ would substantially increase predictive power.
         raw["medal_points"] = raw["medal"].map({"Gold": 3, "Silver": 2, "Bronze": 1, "No Medal": 0})
         _, X_test_s, _, _, preprocessor_s = prepare_data(raw)
         fn = get_feature_names(preprocessor_s)
-        mdl = rf_model if rf_m["auc_roc"] >= lgbm_m["auc_roc"] else lgbm_model
+        mdl = rf_model_ex if rf_m_ex["auc_roc"] >= lgbm_m_ex["auc_roc"] else lgbm_model_ex
         return compute_shap(mdl, X_test_s, fn)
 
     with st.spinner("Computing SHAP values…"):
         shap_data = get_shap_data()
 
-    shap_vals  = shap_data["shap_values"]    # (n_samples, n_features)
+    shap_vals  = shap_data["shap_values"]
     X_sample   = shap_data["X_sample"]
     feat_df    = shap_data["feat_df"]
     wf_idx     = shap_data["waterfall_idx"]
     base_value = shap_data["expected_value"]
 
-    # ── Plot 1: Bar chart — mean absolute SHAP values ─────────────────
+    # Plot 1: Mean |SHAP| bar
     st.markdown("##### Plot 1 — Mean |SHAP| — Global Feature Importance")
     top_n = 20
     bar_df = feat_df.head(top_n).sort_values("mean_abs_shap")
@@ -1310,10 +1264,7 @@ would substantially increase predictive power.
         title=f"Top {top_n} Features by Mean |SHAP| — {best_tree_name}",
         labels={"mean_abs_shap": "Mean |SHAP value|", "feature": ""},
     )
-    fig_shap_bar.update_layout(
-        plot_bgcolor="white", height=520,
-        coloraxis_showscale=False,
-    )
+    fig_shap_bar.update_layout(plot_bgcolor="white", height=520, coloraxis_showscale=False)
     st.plotly_chart(fig_shap_bar, use_container_width=True)
     st.caption(
         "Mean absolute SHAP values rank features by their average impact on model output "
@@ -1321,22 +1272,19 @@ would substantially increase predictive power.
         "the base rate — in either direction."
     )
 
-    # ── Plot 2: Beeswarm (summary) — direction + magnitude ───────────
+    # Plot 2: Beeswarm
     st.markdown("##### Plot 2 — Beeswarm Summary Plot — Direction of Impact")
-
-    # Build a Plotly beeswarm manually (shap.plots.beeswarm renders matplotlib)
     top_feats = feat_df["feature"].head(15).tolist()
     feat_idx  = [list(feat_df["feature"]).index(f) for f in top_feats]
 
     beeswarm_rows = []
     rng = np.random.default_rng(42)
-    for rank, (fi, fname) in enumerate(zip(feat_idx, top_feats)):
-        sv_col    = shap_vals[:, fi]
-        fv_col    = X_sample[:, fi]
-        # Normalise feature value to [0,1] for colour
+    for rank, (fi_idx, fname) in enumerate(zip(feat_idx, top_feats)):
+        sv_col = shap_vals[:, fi_idx]
+        fv_col = X_sample[:, fi_idx]
         fv_min, fv_max = fv_col.min(), fv_col.max()
-        fv_norm   = (fv_col - fv_min) / (fv_max - fv_min + 1e-9)
-        jitter    = rng.uniform(-0.35, 0.35, size=len(sv_col))
+        fv_norm = (fv_col - fv_min) / (fv_max - fv_min + 1e-9)
+        jitter  = rng.uniform(-0.35, 0.35, size=len(sv_col))
         for sv_i, fv_n, j in zip(sv_col, fv_norm, jitter):
             beeswarm_rows.append({
                 "feature":    fname,
@@ -1356,10 +1304,7 @@ would substantially increase predictive power.
         labels={"shap_value": "SHAP value (impact on model output)", "y_jitter": ""},
     )
     fig_bee.update_traces(marker=dict(size=4, opacity=0.6))
-    fig_bee.update_yaxes(
-        tickvals=list(range(len(top_feats))),
-        ticktext=top_feats,
-    )
+    fig_bee.update_yaxes(tickvals=list(range(len(top_feats))), ticktext=top_feats)
     fig_bee.add_vline(x=0, line_dash="dash", line_color="#94a3b8")
     fig_bee.update_layout(
         plot_bgcolor="white", height=520,
@@ -1374,35 +1319,26 @@ would substantially increase predictive power.
         "variance in its impact."
     )
 
-    # ── Plot 3: Waterfall for one prediction ─────────────────────────
+    # Plot 3: Waterfall
     st.markdown("##### Plot 3 — Waterfall Plot — Single Prediction Explanation")
+    wf_shap = shap_vals[wf_idx]
+    wf_pred = best_tree_model.predict_proba(X_sample[[wf_idx]])[0, 1]
 
-    wf_shap   = shap_vals[wf_idx]          # (n_features,)
-    wf_pred   = best_tree_model.predict_proba(X_sample[[wf_idx]])[0, 1]
-
-    # Show only the top-10 contributors for readability
     top_k = 10
-    contrib_idx  = np.argsort(np.abs(wf_shap))[::-1][:top_k]
-    contrib_vals = wf_shap[contrib_idx]
-    contrib_names = [feat_df["feature"].tolist()[i] if i < len(feat_df) else feat_names[i]
-                     for i in contrib_idx]
-    # Use the ranking from feat_df
+    contrib_idx   = np.argsort(np.abs(wf_shap))[::-1][:top_k]
+    contrib_vals  = wf_shap[contrib_idx]
     all_feat_names = feat_df["feature"].tolist()
     contrib_names  = [all_feat_names[i] for i in contrib_idx]
 
-    # Build cumulative waterfall data (base → contributions → final)
-    cumvals   = np.concatenate([[base_value], base_value + np.cumsum(contrib_vals)])
-    bar_vals  = np.concatenate([[base_value], contrib_vals])
-    labels    = ["Base rate"] + contrib_names
-    colors    = ["#64748b"] + ["#dc2626" if v > 0 else "#1565c0" for v in contrib_vals]
+    cumvals  = np.concatenate([[base_value], base_value + np.cumsum(contrib_vals)])
+    bar_vals = np.concatenate([[base_value], contrib_vals])
+    labels   = ["Base rate"] + contrib_names
+    colors   = ["#64748b"] + ["#dc2626" if v > 0 else "#1565c0" for v in contrib_vals]
 
     fig_wf = go.Figure()
-    # Transparent base for stacking
     fig_wf.add_trace(go.Bar(
         x=labels,
-        y=np.concatenate([[0], np.where(contrib_vals >= 0,
-                                        cumvals[:-1],
-                                        cumvals[1:])]),
+        y=np.concatenate([[0], np.where(contrib_vals >= 0, cumvals[:-1], cumvals[1:])]),
         marker_color="rgba(0,0,0,0)",
         showlegend=False, hoverinfo="skip",
     ))
@@ -1421,8 +1357,7 @@ would substantially increase predictive power.
         title=f"Waterfall — Predicted medal probability: {wf_pred:.3f}  (top-{top_k} contributors)",
         xaxis_title="", yaxis_title="Cumulative probability",
         plot_bgcolor="white", height=450,
-        showlegend=False,
-        xaxis_tickangle=-30,
+        showlegend=False, xaxis_tickangle=-30,
     )
     st.plotly_chart(fig_wf, use_container_width=True)
     st.caption(
@@ -1431,7 +1366,6 @@ would substantially increase predictive power.
         "The dotted line marks the final predicted medal probability."
     )
 
-    # ── Interpretation ────────────────────────────────────────────────
     top3 = feat_df["feature"].head(3).tolist()
     st.markdown(f"""
 **Which features have the strongest impact?**
@@ -1459,6 +1393,107 @@ A national Olympic committee could use these SHAP values in three ways:
    rationale for why the model rates a specific athlete's medal chances, which is essential
    for communicating decisions to athletes and coaching staff.
 """)
+
+    # ──────────────────────────────────────────────────────────────────
+    # INTERACTIVE MEDAL PREDICTION
+    # ──────────────────────────────────────────────────────────────────
+    st.markdown('<div class="sec">Interactive Medal Prediction</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"Enter an athlete's attributes below and the **{best_tree_name}** model will "
+        "predict their probability of winning a medal."
+    )
+
+    all_sports_raw   = sorted(df["sport"].unique().tolist())
+    all_team_opts    = sorted(df["team_or_individual"].dropna().unique().tolist())
+
+    with st.form("live_prediction_form"):
+        pc1, pc2, pc3 = st.columns(3)
+
+        with pc1:
+            st.markdown("**Athlete Attributes**")
+            pred_age    = st.number_input("Age", min_value=10, max_value=75, value=25)
+            pred_height = st.number_input("Height (cm)", min_value=130, max_value=230, value=175)
+            pred_weight = st.number_input("Weight (kg)", min_value=30, max_value=180, value=70)
+            pred_gender = st.selectbox("Gender", ["Male", "Female"])
+            pred_total_olympics = st.number_input("Total Olympics Attended", min_value=1, max_value=10, value=1)
+            pred_total_medals   = st.number_input("Career Medals Won", min_value=0, max_value=30, value=0)
+
+        with pc2:
+            st.markdown("**Competition Context**")
+            pred_games_type = st.selectbox("Games Type", ["Summer", "Winter"])
+            pred_year       = st.select_slider("Year", options=sorted(df["year"].unique().tolist()), value=2020)
+            pred_sport      = st.selectbox("Sport", all_sports_raw)
+            pred_team       = st.selectbox("Team or Individual", all_team_opts)
+
+        with pc3:
+            st.markdown("**Country Statistics**")
+            pred_country_gold    = st.number_input("Country Total Gold Medals", min_value=0, max_value=3000, value=100)
+            pred_country_medals  = st.number_input("Country Total Medals", min_value=0, max_value=8000, value=300)
+            pred_country_rank    = st.number_input("Country Best Olympic Rank", min_value=1, max_value=100, value=10)
+            pred_country_first   = st.number_input("Country First Participation Year", min_value=1896, max_value=2020, value=1900, step=4)
+
+        submitted = st.form_submit_button("Predict Medal Probability", use_container_width=True)
+
+    if submitted:
+        input_df = pd.DataFrame([{
+            "age":                       pred_age,
+            "height_cm":                 pred_height,
+            "weight_kg":                 pred_weight,
+            "total_olympics_attended":   pred_total_olympics,
+            "total_medals_won":          pred_total_medals,
+            "country_total_gold":        pred_country_gold,
+            "country_total_medals":      pred_country_medals,
+            "country_best_rank":         pred_country_rank,
+            "country_first_participation": pred_country_first,
+            "year":                      pred_year,
+            "gender":                    pred_gender,
+            "games_type":                pred_games_type,
+            "sport":                     pred_sport,
+            "team_or_individual":        pred_team,
+        }])
+
+        input_proc = preprocessor_ex.transform(input_df)
+        prob       = best_tree_model.predict_proba(input_proc)[0, 1]
+        pred_label = "🥇 Medal" if prob >= 0.5 else "No Medal"
+
+        st.markdown("---")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Prediction", pred_label)
+        r2.metric("Medal Probability", f"{prob:.1%}")
+        r3.metric("Model", best_tree_name)
+
+        fig_gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=prob * 100,
+            number={"suffix": "%", "font": {"size": 32}},
+            title={"text": "Medal Probability", "font": {"size": 18}},
+            gauge={
+                "axis": {"range": [0, 100], "tickwidth": 1},
+                "bar":  {"color": "#f59e0b" if prob >= 0.5 else "#64748b"},
+                "steps": [
+                    {"range": [0, 50],  "color": "#fee2e2"},
+                    {"range": [50, 100], "color": "#dcfce7"},
+                ],
+                "threshold": {
+                    "line": {"color": "#1565c0", "width": 4},
+                    "thickness": 0.75,
+                    "value": 50,
+                },
+            },
+        ))
+        fig_gauge.update_layout(height=320, margin=dict(t=60, b=20, l=40, r=40))
+        st.plotly_chart(fig_gauge, use_container_width=True)
+
+        if prob >= 0.5:
+            st.success(
+                f"The model predicts a **{prob:.1%}** chance of winning a medal. "
+                f"Key drivers are typically career medal history and country program strength."
+            )
+        else:
+            st.info(
+                f"The model predicts a **{prob:.1%}** chance of winning a medal. "
+                "Try increasing career medals won or selecting a stronger national program."
+            )
 
 # ======================================================================
 # FOOTER
