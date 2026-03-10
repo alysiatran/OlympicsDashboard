@@ -72,6 +72,29 @@ st.markdown(
 
 [data-testid="stTabs"] button[role="tab"]{color:#1e293b!important}
 [data-testid="stTabs"] button[role="tab"][aria-selected="true"]{color:#1565c0!important;font-weight:700}
+
+/* Force dark text throughout main content — prevents white-on-white in dark mode */
+[data-testid="stAppViewContainer"] .stMarkdown p,
+[data-testid="stAppViewContainer"] .stMarkdown li,
+[data-testid="stAppViewContainer"] .stMarkdown h1,
+[data-testid="stAppViewContainer"] .stMarkdown h2,
+[data-testid="stAppViewContainer"] .stMarkdown h3,
+[data-testid="stAppViewContainer"] .stMarkdown h4,
+[data-testid="stAppViewContainer"] .stMarkdown h5,
+[data-testid="stAppViewContainer"] .stMarkdown h6,
+[data-testid="stAppViewContainer"] .stMarkdown td,
+[data-testid="stAppViewContainer"] .stMarkdown th,
+[data-testid="stAppViewContainer"] .stMarkdown strong,
+[data-testid="stAppViewContainer"] .stMarkdown em,
+[data-testid="stAppViewContainer"] .stMarkdown code,
+[data-testid="stAppViewContainer"] .stMarkdown blockquote,
+[data-testid="stCaptionContainer"] p,
+[data-testid="stMetricLabel"],
+[data-testid="stMetricValue"],
+[data-testid="stMetricDelta"]{color:#1e293b!important}
+
+/* Hero banner keeps white text on its dark gradient background */
+.hero, .hero h1, .hero p{color:#fff!important}
 </style>
 """,
     unsafe_allow_html=True,
