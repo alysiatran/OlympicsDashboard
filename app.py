@@ -166,8 +166,18 @@ if fdf.empty:
 # TRAIN MODELS (cached — runs once per session)
 # ======================================================================
 
+MODELS_PATH = "models.pkl"
+
+
 @st.cache_resource(show_spinner=False)
 def run_all_models():
+    import os, joblib
+
+    # Fast path: load pre-trained models from disk
+    if os.path.exists(MODELS_PATH):
+        return joblib.load(MODELS_PATH)
+
+    # Fallback: train from scratch (slow — run pretrain.py locally instead)
     raw = pd.read_csv(DATA_PATH)
     raw["has_medal"] = raw["medal"] != "No Medal"
     raw["medal_points"] = raw["medal"].map({"Gold": 3, "Silver": 2, "Bronze": 1, "No Medal": 0})
