@@ -114,7 +114,7 @@ def compute_metrics(model, X_test, y_test) -> dict:
     }
 
 
-CV = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+CV = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -139,8 +139,8 @@ def train_logistic_regression(X_train, X_test, y_train, y_test):
 
 def train_decision_tree(X_train, X_test, y_train, y_test):
     param_grid = {
-        "max_depth":        [3, 5, 7, 10],
-        "min_samples_leaf": [5, 10, 20, 50],
+        "max_depth":        [3, 5, 7],
+        "min_samples_leaf": [5, 10, 20],
     }
     base = DecisionTreeClassifier(class_weight="balanced", random_state=RANDOM_STATE)
     gs = GridSearchCV(
@@ -160,8 +160,8 @@ def train_decision_tree(X_train, X_test, y_train, y_test):
 
 def train_random_forest(X_train, X_test, y_train, y_test):
     param_grid = {
-        "n_estimators": [50, 100, 200],
-        "max_depth":    [3, 5, 8],
+        "n_estimators": [100, 200],
+        "max_depth":    [5, 8],
     }
     base = RandomForestClassifier(
         class_weight="balanced", random_state=RANDOM_STATE, n_jobs=-1
@@ -188,9 +188,9 @@ def train_lightgbm(X_train, X_test, y_train, y_test):
     spw = neg / pos
 
     param_grid = {
-        "n_estimators":  [50, 100, 200],
-        "max_depth":     [3, 4, 5, 6],
-        "learning_rate": [0.01, 0.05, 0.1],
+        "n_estimators":  [100, 200],
+        "max_depth":     [4, 6],
+        "learning_rate": [0.05, 0.1],
     }
     base = LGBMClassifier(
         scale_pos_weight=spw,
