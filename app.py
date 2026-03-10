@@ -212,8 +212,8 @@ with tab_medal:
     medal_tbl.index.name = "Rank"
 
     st.dataframe(
-        medal_tbl.style.background_gradient(subset=["Gold"], cmap="YlOrBr")
-                       .background_gradient(subset=["Total"], cmap="Blues"),
+        medal_tbl.style.bar(subset=["Gold"], color="#f59e0b")
+                       .bar(subset=["Total"], color="#93c5fd"),
         use_container_width=True,
         height=min(600, 60 + len(medal_tbl) * 36),
     )
