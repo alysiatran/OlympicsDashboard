@@ -146,6 +146,15 @@ st.markdown(
 
 if fdf.empty:
     st.warning("No data matches the current filters. Adjust the sidebar.")
+    st.write("**Debug info:**")
+    st.write(f"- Total rows in df: {len(df)}")
+    st.write(f"- games_type filter: {games_type}")
+    st.write(f"- gender filter: {gender_filter}")
+    st.write(f"- sports selected: {len(sel_sports)} of {len(all_sports)}")
+    st.write(f"- countries selected: {len(sel_countries)} of {len(all_countries)}")
+    st.write(f"- year range: {year_range}")
+    st.write(f"- Unique games_type in df: {df['games_type'].unique().tolist()}")
+    st.write(f"- Unique gender in df: {df['gender'].unique().tolist()}")
     st.stop()
 
 # ======================================================================
