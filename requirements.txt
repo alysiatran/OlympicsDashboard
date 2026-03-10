@@ -1,3 +1,5 @@
+# Note: This app is designed for light mode.
+# If text is not displaying properly, please switch to light mode in the Streamlit menu (top right ⋮ → Settings → Theme → Light).
 streamlit==1.54.0
 pandas==2.3.3
 numpy==2.4.2
